@@ -1,0 +1,13 @@
+[package]
+version = "0.1.0"
+category = "CAE"
+title = "Fan-Sim"
+description = "Calls the Fan-Sim local inference service and loads prediction artifacts into Omniverse."
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.usd" = {}
+
+[[python.module]]
+name = "omni.fan_sim"
+

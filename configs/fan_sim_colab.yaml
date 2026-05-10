@@ -1,0 +1,22 @@
+base_case: data/base_case
+case_matrix:
+  rpm: [600]
+  outlet_pressure: [0]
+openfoam:
+  shell: bash
+  solver: simpleFoam
+  latest_time: true
+  run_block_mesh: false
+  run_surface_feature_extract: false
+  run_snappy_hex_mesh: false
+  run_check_mesh: false
+fields:
+  velocity: U
+  pressure: p
+model:
+  backend: numpy
+  output_dir: artifacts/models/fan_mgn_colab
+omniverse:
+  kit_cae_root: /content/kit-cae
+  export_point_data: true
+  export_volume_vdb: optional

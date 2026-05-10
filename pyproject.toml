@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fan-sim"
+version = "0.1.0"
+description = "OpenFOAM to PhysicsNeMo MeshGraphNet fan surrogate pipeline with Omniverse export."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "numpy>=1.24",
+  "pydantic>=2",
+  "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+service = ["fastapi>=0.110", "uvicorn>=0.27"]
+vtk = ["pyvista>=0.43", "vtk>=9.2"]
+ml = ["torch", "torch-geometric", "nvidia-physicsnemo", "warp-lang>=1.5,<1.13"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+fan-sim = "fan_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

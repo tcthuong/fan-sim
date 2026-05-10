@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+.venv-ubuntu/
+venv/
+
+# Generated CFD/ML artifacts
+runs/
+artifacts/
+
+# User-provided OpenFOAM data and large archives
+data/base_case/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Local/editor files
+.env
+.env.*
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
