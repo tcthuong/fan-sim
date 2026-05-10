@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from pathlib import Path
 import sys
@@ -23,9 +24,12 @@ def main(argv: list[str] | None = None) -> int:
     _add_config_arg(sub.add_parser("generate-cases"))
     run_parser = _add_config_arg(sub.add_parser("run-openfoam"))
     run_parser.add_argument("--case-id")
+    run_parser.add_argument("--jobs", type=int, default=1, help="Number of cases to run in parallel.")
     export_parser = _add_config_arg(sub.add_parser("export-vtk"))
     export_parser.add_argument("--case-id")
-    _add_config_arg(sub.add_parser("build-graphs"))
+    export_parser.add_argument("--jobs", type=int, default=1, help="Number of cases to export in parallel.")
+    graph_parser = _add_config_arg(sub.add_parser("build-graphs"))
+    graph_parser.add_argument("--jobs", type=int, default=1, help="Number of graph builds to run in parallel.")
     train_parser = _add_config_arg(sub.add_parser("train"))
     train_parser.add_argument("--epochs", type=int, default=1)
     predict_parser = _add_config_arg(sub.add_parser("predict"))
@@ -43,11 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "generate-cases":
         _generate_cases(config)
     elif args.command == "run-openfoam":
-        _run_openfoam(config, args.case_id)
+        _run_openfoam(config, args.case_id, jobs=args.jobs)
     elif args.command == "export-vtk":
-        _export_vtk(config, args.case_id)
+        _export_vtk(config, args.case_id, jobs=args.jobs)
     elif args.command == "build-graphs":
-        _build_graphs(config)
+        _build_graphs(config, jobs=args.jobs)
     elif args.command == "train":
         graph_paths = sorted((config.root / "artifacts/graphs").glob("*.graph.pt"))
         checkpoint = train_from_graphs(config, graph_paths, epochs=args.epochs)
@@ -92,19 +96,25 @@ def _generate_cases(config) -> None:
         print(generated.case_dir)
 
 
-def _run_openfoam(config, case_id: str | None = None) -> None:
-    for case_dir in _case_dirs(config.root, case_id):
-        report = migrate_case_for_foundation(case_dir)
-        for note in report.notes:
-            print(note)
-        completed = run_openfoam_case(case_dir, config.openfoam)
-        print(f"{case_dir}: {completed.returncode}")
+def _run_openfoam(config, case_id: str | None = None, jobs: int = 1) -> None:
+    _run_cases(_case_dirs(config.root, case_id), jobs, lambda case_dir: _run_openfoam_one(config, case_dir))
 
 
-def _export_vtk(config, case_id: str | None = None) -> None:
-    for case_dir in _case_dirs(config.root, case_id):
-        completed = export_vtk(case_dir, config.fields.velocity, config.fields.pressure)
-        print(f"{case_dir}: {completed.returncode}")
+def _run_openfoam_one(config, case_dir: Path) -> None:
+    report = migrate_case_for_foundation(case_dir)
+    for note in report.notes:
+        print(note)
+    completed = run_openfoam_case(case_dir, config.openfoam)
+    print(f"{case_dir}: {completed.returncode}", flush=True)
+
+
+def _export_vtk(config, case_id: str | None = None, jobs: int = 1) -> None:
+    _run_cases(_case_dirs(config.root, case_id), jobs, lambda case_dir: _export_vtk_one(config, case_dir))
+
+
+def _export_vtk_one(config, case_dir: Path) -> None:
+    completed = export_vtk(case_dir, config.fields.velocity, config.fields.pressure)
+    print(f"{case_dir}: {completed.returncode}", flush=True)
 
 
 def _case_dirs(root: Path, case_id: str | None = None) -> list[Path]:
@@ -117,41 +127,64 @@ def _case_dirs(root: Path, case_id: str | None = None) -> list[Path]:
     return sorted(openfoam_root.glob("case_*"))
 
 
-def _build_graphs(config) -> None:
+def _build_graphs(config, jobs: int = 1) -> None:
     output_dir = config.root / "artifacts/graphs"
     output_dir.mkdir(parents=True, exist_ok=True)
-    for case_dir in sorted((config.root / "runs/openfoam").glob("case_*")):
-        print(f"{case_dir}: locating VTU", flush=True)
-        vtu_path = latest_vtu(case_dir)
-        print(f"{case_dir}: reading {vtu_path}", flush=True)
-        mesh = read_vtu(
-            vtu_path,
-            config.fields.velocity,
-            config.fields.pressure,
-            progress=lambda message, case_dir=case_dir: print(f"{case_dir}: {message}", flush=True),
-        )
-        print(
-            f"{case_dir}: loaded points={mesh.points.shape[0]} cells={len(mesh.cells)} "
-            f"cell_fields={list(mesh.cell_data.keys())}",
-            flush=True,
-        )
-        metadata = _read_case_metadata(case_dir)
-        print(f"{case_dir}: building cell graph", flush=True)
-        sample = build_cell_graph_sample(
-            mesh=mesh,
-            rpm=float(metadata["rpm"]),
-            inlet_pressure=float(metadata.get("inlet_pressure", 0.0)),
-            outlet_pressure=float(metadata["outlet_pressure"]),
-            velocity_field=config.fields.velocity,
-            pressure_field=config.fields.pressure,
-        )
-        output_path = output_dir / f"{case_dir.name}.graph.pt"
-        print(
-            f"{case_dir}: graph nodes={sample['x'].shape[0]} edges={sample['edge_index'].shape[1]} "
-            f"-> {output_path}",
-            flush=True,
-        )
-        save_graph_sample(sample, output_path)
+    case_dirs = sorted((config.root / "runs/openfoam").glob("case_*"))
+    _run_cases(case_dirs, jobs, lambda case_dir: _build_graph_one(config, case_dir, output_dir))
+
+
+def _build_graph_one(config, case_dir: Path, output_dir: Path) -> None:
+    print(f"{case_dir}: locating VTU", flush=True)
+    vtu_path = latest_vtu(case_dir)
+    print(f"{case_dir}: reading {vtu_path}", flush=True)
+    mesh = read_vtu(
+        vtu_path,
+        config.fields.velocity,
+        config.fields.pressure,
+        progress=lambda message, case_dir=case_dir: print(f"{case_dir}: {message}", flush=True),
+    )
+    print(
+        f"{case_dir}: loaded points={mesh.points.shape[0]} cells={len(mesh.cells)} "
+        f"cell_fields={list(mesh.cell_data.keys())}",
+        flush=True,
+    )
+    metadata = _read_case_metadata(case_dir)
+    print(f"{case_dir}: building cell graph", flush=True)
+    sample = build_cell_graph_sample(
+        mesh=mesh,
+        rpm=float(metadata["rpm"]),
+        inlet_pressure=float(metadata.get("inlet_pressure", 0.0)),
+        outlet_pressure=float(metadata["outlet_pressure"]),
+        velocity_field=config.fields.velocity,
+        pressure_field=config.fields.pressure,
+    )
+    output_path = output_dir / f"{case_dir.name}.graph.pt"
+    print(
+        f"{case_dir}: graph nodes={sample['x'].shape[0]} edges={sample['edge_index'].shape[1]} "
+        f"-> {output_path}",
+        flush=True,
+    )
+    save_graph_sample(sample, output_path)
+
+
+def _run_cases(case_dirs: list[Path], jobs: int, worker) -> None:
+    if jobs < 1:
+        raise ValueError("--jobs must be >= 1")
+    if jobs == 1 or len(case_dirs) <= 1:
+        for case_dir in case_dirs:
+            worker(case_dir)
+        return
+
+    print(f"Running {len(case_dirs)} cases with jobs={jobs}", flush=True)
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = {executor.submit(worker, case_dir): case_dir for case_dir in case_dirs}
+        for future in as_completed(futures):
+            case_dir = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                raise RuntimeError(f"{case_dir} failed") from exc
 
 
 def _read_case_metadata(case_dir: Path) -> dict:

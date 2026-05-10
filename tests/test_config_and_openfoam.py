@@ -4,7 +4,7 @@ import json
 import pytest
 
 from fan_sim.config import load_config, expand_case_matrix
-from fan_sim.cli import _case_dirs
+from fan_sim.cli import _case_dirs, _run_cases
 from fan_sim.openfoam.compat import migrate_case_for_foundation
 from fan_sim.openfoam.case import clone_parameterized_case, validate_base_case
 from fan_sim.openfoam.runner import build_bash_command
@@ -269,3 +269,20 @@ def test_case_dirs_filters_single_case_id(tmp_path: Path):
     (root / "case_b").mkdir()
 
     assert [path.name for path in _case_dirs(tmp_path, "case_b")] == ["case_b"]
+
+
+def test_run_cases_accepts_parallel_jobs(tmp_path: Path):
+    case_a = tmp_path / "case_a"
+    case_b = tmp_path / "case_b"
+    case_a.mkdir()
+    case_b.mkdir()
+    seen: list[str] = []
+
+    _run_cases([case_a, case_b], jobs=2, worker=lambda case_dir: seen.append(case_dir.name))
+
+    assert sorted(seen) == ["case_a", "case_b"]
+
+
+def test_run_cases_rejects_invalid_jobs(tmp_path: Path):
+    with pytest.raises(ValueError, match="--jobs"):
+        _run_cases([tmp_path], jobs=0, worker=lambda case_dir: None)

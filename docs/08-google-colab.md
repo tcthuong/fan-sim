@@ -151,7 +151,8 @@ Do not patch `controlDict` down to `endTime 2` for the full A100 run.
 ## Run OpenFOAM
 
 ```python
-!fan-sim run-openfoam --config configs/fan_sim_colab.yaml
+OPENFOAM_JOBS = 2
+!fan-sim run-openfoam --config configs/fan_sim_colab.yaml --jobs "$OPENFOAM_JOBS"
 ```
 
 Check logs:
@@ -163,7 +164,8 @@ Check logs:
 ## Export VTU
 
 ```python
-!fan-sim export-vtk --config configs/fan_sim_colab.yaml
+EXPORT_JOBS = 2
+!fan-sim export-vtk --config configs/fan_sim_colab.yaml --jobs "$EXPORT_JOBS"
 ```
 
 Check output:
@@ -175,9 +177,12 @@ Check output:
 ## Build Graphs And Train
 
 ```python
-!fan-sim build-graphs --config configs/fan_sim_colab.yaml
+GRAPH_JOBS = 1
+!fan-sim build-graphs --config configs/fan_sim_colab.yaml --jobs "$GRAPH_JOBS"
 !find artifacts/graphs -name "*.graph.pt" -print
 ```
+
+Keep `GRAPH_JOBS` low unless the runtime has enough RAM for multiple large VTU reads. Increase `OPENFOAM_JOBS` or `EXPORT_JOBS` cautiously if Colab has spare CPU/RAM.
 
 If `train` reports `No graph paths supplied for training`, the graph build did not complete. Check whether a graph file exists:
 
