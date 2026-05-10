@@ -23,7 +23,7 @@ def build_cell_graph_sample(
 ) -> dict[str, Any]:
     validate_field_association(mesh, velocity_field, pressure_field)
     pos = compute_cell_centers(mesh.points, mesh.cells)
-    edge_index = build_bidirectional_edges(mesh.cells, mesh.cell_types)
+    edge_index = build_bidirectional_edges(mesh.cells, mesh.cell_types, mesh.cell_faces)
     edge_attr = build_edge_features(pos, edge_index)
     x = build_node_features(pos, rpm, inlet_pressure, outlet_pressure, patch_flags)
     y = build_targets(mesh.cell_data[velocity_field], mesh.cell_data[pressure_field])
@@ -48,33 +48,45 @@ def compute_cell_centers(points: np.ndarray, cells: Sequence[Sequence[int]]) -> 
     point_array = np.asarray(points, dtype=np.float32)
     centers = []
     for cell in cells:
-        if not cell:
+        if len(cell) == 0:
             raise ValueError("Encountered empty cell while computing cell centers.")
         centers.append(point_array[np.asarray(cell, dtype=np.int64)].mean(axis=0))
     return np.asarray(centers, dtype=np.float32)
 
 
-def build_bidirectional_edges(cells: Sequence[Sequence[int]], cell_types: np.ndarray | None = None) -> np.ndarray:
+def build_bidirectional_edges(
+    cells: Sequence[Sequence[int]],
+    cell_types: np.ndarray | None = None,
+    cell_faces: Sequence[Sequence[Sequence[int]]] | None = None,
+) -> np.ndarray:
     if cell_types is not None:
-        face_edges = _build_face_adjacency_edges(cells, cell_types)
+        face_edges = _build_face_adjacency_edges(cells, cell_types, cell_faces)
         if face_edges is not None:
             return face_edges
     return _build_point_adjacency_edges(cells)
 
 
-def _build_face_adjacency_edges(cells: Sequence[Sequence[int]], cell_types: np.ndarray) -> np.ndarray | None:
+def _build_face_adjacency_edges(
+    cells: Sequence[Sequence[int]],
+    cell_types: np.ndarray,
+    cell_faces: Sequence[Sequence[Sequence[int]]] | None = None,
+) -> np.ndarray | None:
     if len(cells) != len(cell_types):
+        return None
+    if cell_faces is not None and len(cell_faces) != len(cells):
         return None
 
     face_owner: dict[tuple[int, ...], int] = {}
     undirected: list[tuple[int, int]] = []
     for cell_id, cell in enumerate(cells):
         cell_array = np.asarray(cell, dtype=np.int64)
-        patterns = _face_patterns(int(cell_types[cell_id]), len(cell_array))
-        if patterns is None:
+        faces = _faces_for_cell(cell_id, cell_array, int(cell_types[cell_id]), cell_faces)
+        if faces is None:
             return None
-        for pattern in patterns:
-            face = tuple(sorted(int(cell_array[index]) for index in pattern))
+        for raw_face in faces:
+            face = tuple(sorted(int(point_id) for point_id in raw_face))
+            if len(face) < 3:
+                continue
             owner = face_owner.pop(face, None)
             if owner is None:
                 face_owner[face] = cell_id
@@ -110,6 +122,26 @@ def _directed_edges_from_undirected(undirected: Sequence[tuple[int, int]]) -> np
     if not directed:
         return np.zeros((2, 0), dtype=np.int64)
     return np.asarray(directed, dtype=np.int64).T
+
+
+def _faces_for_cell(
+    cell_id: int,
+    cell_array: np.ndarray,
+    cell_type: int,
+    cell_faces: Sequence[Sequence[Sequence[int]]] | None,
+) -> list[np.ndarray] | tuple[tuple[int, ...], ...] | None:
+    if cell_faces is not None:
+        faces = cell_faces[cell_id]
+        if faces:
+            return [np.asarray(face, dtype=np.int64) for face in faces]
+
+    patterns = _face_patterns(cell_type, len(cell_array))
+    if patterns is not None:
+        return tuple(tuple(int(cell_array[index]) for index in pattern) for pattern in patterns)
+
+    if cell_type == 42:
+        raise ValueError("VTK_POLYHEDRON cells require face metadata. Build MeshData with read_vtu().")
+    return None
 
 
 def _face_patterns(cell_type: int, n_points: int) -> tuple[tuple[int, ...], ...] | None:

@@ -124,7 +124,12 @@ def _build_graphs(config) -> None:
         print(f"{case_dir}: locating VTU", flush=True)
         vtu_path = latest_vtu(case_dir)
         print(f"{case_dir}: reading {vtu_path}", flush=True)
-        mesh = read_vtu(vtu_path, config.fields.velocity, config.fields.pressure)
+        mesh = read_vtu(
+            vtu_path,
+            config.fields.velocity,
+            config.fields.pressure,
+            progress=lambda message, case_dir=case_dir: print(f"{case_dir}: {message}", flush=True),
+        )
         print(
             f"{case_dir}: loaded points={mesh.points.shape[0]} cells={len(mesh.cells)} "
             f"cell_fields={list(mesh.cell_data.keys())}",

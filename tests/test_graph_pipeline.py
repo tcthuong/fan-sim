@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from fan_sim.data.vtu import MeshData, validate_field_association
+from fan_sim.data.vtu import CellFaceTable, CellTable, MeshData, validate_field_association
 from fan_sim.graph.build import build_cell_graph_sample
 from fan_sim.ml.normalizer import GraphNormalizer
 
@@ -54,6 +54,27 @@ def test_build_cell_graph_sample_uses_cell_targets_and_bidirectional_edges():
     assert np.all(sample["edge_attr"][:, 3] > 0)
 
 
+def test_build_cell_graph_sample_accepts_compact_cell_table_from_vtu_reader():
+    mesh = _mesh_data()
+    mesh.cells = CellTable(
+        values=np.array([0, 1, 2, 3, 1, 2, 3, 4], dtype=np.int64),
+        starts=np.array([0, 4], dtype=np.int64),
+        ends=np.array([4, 8], dtype=np.int64),
+    )
+
+    sample = build_cell_graph_sample(
+        mesh=mesh,
+        rpm=1200,
+        inlet_pressure=0.0,
+        outlet_pressure=20.0,
+        velocity_field="U",
+        pressure_field="p",
+    )
+
+    assert sample["x"].shape == (2, 10)
+    assert sample["edge_index"].tolist() == [[0, 1], [1, 0]]
+
+
 def test_cell_graph_uses_face_adjacency_not_point_adjacency():
     points = np.array(
         [
@@ -81,6 +102,43 @@ def test_cell_graph_uses_face_adjacency_not_point_adjacency():
         },
         point_data={},
         source="synthetic.vtu",
+    )
+
+    sample = build_cell_graph_sample(
+        mesh=mesh,
+        rpm=1200,
+        inlet_pressure=0.0,
+        outlet_pressure=20.0,
+        velocity_field="U",
+        pressure_field="p",
+    )
+
+    assert sample["edge_index"].tolist() == [[0, 1], [1, 0]]
+
+
+def test_polyhedron_graph_uses_face_metadata_not_point_cliques():
+    points = np.arange(45, dtype=np.float32).reshape(15, 3)
+    mesh = MeshData(
+        points=points,
+        cells=[
+            [0, 1, 2, 3, 4, 5, 6, 7],
+            [1, 2, 5, 6, 8, 9, 10, 11],
+            [0, 12, 13, 14],
+        ],
+        cell_types=np.array([42, 42, 42], dtype=np.uint8),
+        cell_faces=CellFaceTable.from_nested(
+            [
+                [[1, 2, 5, 6], [0, 3, 4, 7]],
+                [[1, 2, 5, 6], [8, 9, 10, 11]],
+                [[0, 12, 13], [0, 13, 14], [0, 12, 14], [12, 13, 14]],
+            ]
+        ),
+        cell_data={
+            "U": np.zeros((3, 3), dtype=np.float32),
+            "p": np.zeros(3, dtype=np.float32),
+        },
+        point_data={},
+        source="synthetic-polyhedron.vtu",
     )
 
     sample = build_cell_graph_sample(
