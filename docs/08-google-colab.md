@@ -193,11 +193,16 @@ Train on the A100 runtime:
 
 ## Persist Artifacts
 
-If the project is under Google Drive, artifacts persist automatically. If the project is under `/content`, copy outputs before the runtime resets:
+For the full Colab run, avoid syncing `runs/openfoam` automatically. It contains many small and large solver files and can hit Google Drive rate limits. The notebooks only sync:
+
+- checkpoint JSON files.
+- `artifacts/graphs`, which the GPU training notebook needs.
+- trained model artifacts.
+
+If you need to archive OpenFOAM outputs, do it manually after the run, preferably once rather than after every step:
 
 ```python
-!mkdir -p /content/drive/MyDrive/fan-sim-artifacts
-!cp -r artifacts runs/inference /content/drive/MyDrive/fan-sim-artifacts/ 2>/dev/null || true
+sync_to_drive("runs/openfoam")
 ```
 
 ## Full Solves
