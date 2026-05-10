@@ -1,7 +1,7 @@
 base_case: data/base_case
 case_matrix:
-  rpm: [600]
-  outlet_pressure: [0]
+  rpm: [1, 300, 600, 800, 1000, 1200]
+  outlet_pressure: [0, 20, 40, 60]
 openfoam:
   shell: bash
   solver: simpleFoam
@@ -14,8 +14,8 @@ fields:
   velocity: U
   pressure: p
 model:
-  backend: numpy
-  output_dir: artifacts/models/fan_mgn_colab
+  backend: physicsnemo
+  output_dir: artifacts/models/fan_mgn_colab_a100
 omniverse:
   kit_cae_root: /content/kit-cae
   export_point_data: true

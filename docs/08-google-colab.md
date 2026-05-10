@@ -117,9 +117,9 @@ simpleFoam
 foamToVTK
 ```
 
-## Use The Colab Config
+## Use The Colab Pro A100 Config
 
-The Colab config is intentionally small:
+The Colab config is set up for a full Colab Pro/A100 run:
 
 ```text
 configs/fan_sim_colab.yaml
@@ -129,60 +129,45 @@ It uses:
 
 ```yaml
 case_matrix:
-  rpm: [600]
-  outlet_pressure: [0]
+  rpm: [1, 300, 600, 800, 1000, 1200]
+  outlet_pressure: [0, 20, 40, 60]
 model:
-  backend: numpy
+  backend: physicsnemo
+  output_dir: artifacts/models/fan_mgn_colab_a100
 ```
 
-Switch `model.backend` to `physicsnemo` only after the ML stack is installed and verified.
+For a quick smoke run, make a temporary copy of this config and reduce the matrix instead of editing the committed Colab config.
 
-## Generate One Smoke Case
+## Generate All Cases
 
 ```python
 !fan-sim generate-cases --config configs/fan_sim_colab.yaml
 ```
 
-For the large fan mesh, patch the generated case to run only two SIMPLE iterations:
-
-```python
-from pathlib import Path
-
-p = Path("runs/openfoam/case_rpm_0600_pout_000/system/controlDict")
-s = p.read_text()
-s = s.replace("endTime 1000.0;", "endTime 2;")
-s = s.replace("writeInterval 1000;", "writeInterval 1;")
-p.write_text(s)
-```
+Do not patch `controlDict` down to `endTime 2` for the full A100 run.
 
 ## Run OpenFOAM
 
 ```python
-!fan-sim run-openfoam --config configs/fan_sim_colab.yaml --case-id case_rpm_0600_pout_000
+!fan-sim run-openfoam --config configs/fan_sim_colab.yaml
 ```
 
-Monitor log:
+Check logs:
 
 ```python
-!tail -120 runs/openfoam/case_rpm_0600_pout_000/log.fan-sim-openfoam
-```
-
-Expected success:
-
-```text
-/content/.../runs/openfoam/case_rpm_0600_pout_000: 0
+!find runs/openfoam -name "log.fan-sim-openfoam" -print
 ```
 
 ## Export VTU
 
 ```python
-!fan-sim export-vtk --config configs/fan_sim_colab.yaml --case-id case_rpm_0600_pout_000
+!fan-sim export-vtk --config configs/fan_sim_colab.yaml
 ```
 
 Check output:
 
 ```python
-!find runs/openfoam/case_rpm_0600_pout_000/VTK -name "*.vtu" -maxdepth 3 -print
+!find runs/openfoam -path "*/VTK/*" -name "*.vtu" -print
 ```
 
 ## Build Graphs And Train
@@ -198,20 +183,7 @@ If `train` reports `No graph paths supplied for training`, the graph build did n
 !find artifacts/graphs -name "*.graph.pt" -print
 ```
 
-Smoke train:
-
-```python
-!fan-sim train --config configs/fan_sim_colab.yaml --epochs 1
-```
-
-PhysicsNeMo train requires editing `configs/fan_sim_colab.yaml`:
-
-```yaml
-model:
-  backend: physicsnemo
-```
-
-Then:
+Train on the A100 runtime:
 
 ```python
 !fan-sim train --config configs/fan_sim_colab.yaml --epochs 1
