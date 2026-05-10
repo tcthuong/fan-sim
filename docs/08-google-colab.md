@@ -129,12 +129,14 @@ It uses:
 
 ```yaml
 case_matrix:
-  rpm: [1, 300, 600, 800, 1000, 1200]
-  outlet_pressure: [0, 20, 40, 60]
+  rpm: [60, 180, 300, 450, 600, 750, 900, 1050, 1200, 1500]
+  outlet_pressure: [0, 20, 40, 60, 80, 100]
 model:
   backend: physicsnemo
   output_dir: artifacts/models/fan_mgn_colab_a100
 ```
+
+This expands to 60 cases. The minimum RPM is 60 instead of a near-zero operating point so the full Colab run avoids unstable or non-physical fan cases.
 
 For a quick smoke run, make a temporary copy of this config and reduce the matrix instead of editing the committed Colab config.
 
