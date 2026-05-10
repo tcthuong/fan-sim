@@ -132,23 +132,23 @@ openfoam:
         load_config(cfg_path)
 
 
-def test_colab_config_is_smoke_safe():
+def test_colab_config_is_a100_full_run_safe():
     cfg = load_config(Path("configs/fan_sim_colab.yaml"))
 
     assert cfg.openfoam.shell == "bash"
     assert cfg.openfoam.run_block_mesh is False
     assert cfg.openfoam.run_snappy_hex_mesh is False
     assert cfg.openfoam.run_check_mesh is False
-    assert cfg.case_matrix.rpm == [600.0]
-    assert cfg.case_matrix.outlet_pressure == [0.0]
-    assert cfg.model.backend == "numpy"
+    assert cfg.case_matrix.rpm == [60.0, 180.0, 300.0, 450.0, 600.0, 750.0, 900.0, 1050.0, 1200.0, 1500.0]
+    assert cfg.case_matrix.outlet_pressure == [0.0, 20.0, 40.0, 60.0, 80.0, 100.0]
+    assert cfg.model.backend == "physicsnemo"
 
 
 def test_colab_notebook_is_valid_json():
     notebook = json.loads(Path("notebooks/fan_sim_colab.ipynb").read_text(encoding="utf-8"))
 
     assert notebook["nbformat"] == 4
-    assert any("Fan-Sim Colab Smoke Run" in "".join(cell.get("source", [])) for cell in notebook["cells"])
+    assert any("Fan-Sim Colab - Full A100 Run" in "".join(cell.get("source", [])) for cell in notebook["cells"])
 
 
 def test_migrate_case_replaces_simscale_omega_bc_and_disables_custom_functions(tmp_path: Path):
