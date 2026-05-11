@@ -4,7 +4,8 @@ import json
 import pytest
 
 from fan_sim.config import load_config, expand_case_matrix
-from fan_sim.cli import _case_dirs, _run_cases
+from fan_sim.cli import _case_dirs, _has_valid_graph, _openfoam_completed, _run_cases
+from fan_sim.ml.dataset import save_graph_sample
 from fan_sim.openfoam.compat import migrate_case_for_foundation
 from fan_sim.openfoam.case import clone_parameterized_case, validate_base_case
 from fan_sim.openfoam.runner import build_bash_command
@@ -286,3 +287,34 @@ def test_run_cases_accepts_parallel_jobs(tmp_path: Path):
 def test_run_cases_rejects_invalid_jobs(tmp_path: Path):
     with pytest.raises(ValueError, match="--jobs"):
         _run_cases([tmp_path], jobs=0, worker=lambda case_dir: None)
+
+
+def test_openfoam_completed_accepts_existing_vtu(tmp_path: Path):
+    case_dir = tmp_path / "case"
+    vtu_dir = case_dir / "VTK" / "latest"
+    vtu_dir.mkdir(parents=True)
+    (vtu_dir / "internal.vtu").write_text("<VTKFile />", encoding="utf-8")
+
+    assert _openfoam_completed(case_dir) is True
+
+
+def test_openfoam_completed_accepts_finished_log(tmp_path: Path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    (case_dir / "log.fan-sim-openfoam").write_text("ExecutionTime = 1 s\nEnd\n", encoding="utf-8")
+
+    assert _openfoam_completed(case_dir) is True
+
+
+def test_has_valid_graph_rejects_corrupt_graph(tmp_path: Path):
+    graph = tmp_path / "case.graph.pt"
+    graph.write_bytes(b"not a graph")
+
+    assert _has_valid_graph(graph) is False
+
+
+def test_has_valid_graph_accepts_saved_graph(tmp_path: Path):
+    graph = tmp_path / "case.graph.pt"
+    save_graph_sample({"schema_version": "fan-sim-graph-v1", "x": 1}, graph)
+
+    assert _has_valid_graph(graph) is True

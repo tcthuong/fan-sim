@@ -10,7 +10,7 @@ from fan_sim.config import expand_case_matrix, load_config
 from fan_sim.export.artifacts import export_prediction_artifacts
 from fan_sim.graph.build import build_cell_graph_sample
 from fan_sim.inference.loader import load_predictor_from_artifacts
-from fan_sim.ml.dataset import save_graph_sample
+from fan_sim.ml.dataset import load_graph_sample, save_graph_sample
 from fan_sim.ml.training import train_from_graphs
 from fan_sim.openfoam.compat import migrate_case_for_foundation
 from fan_sim.openfoam.case import clone_parameterized_case
@@ -85,6 +85,10 @@ def _add_config_arg(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 def _generate_cases(config) -> None:
     output_root = config.root / "runs/openfoam"
     for case in expand_case_matrix(config):
+        case_dir = output_root / case.case_id
+        if _case_metadata_matches(case_dir, case.rpm, case.inlet_pressure, case.outlet_pressure):
+            print(f"{case_dir}: existing case matches config; skipping generation.", flush=True)
+            continue
         generated = clone_parameterized_case(
             base_case=config.base_case,
             output_root=output_root,
@@ -101,6 +105,9 @@ def _run_openfoam(config, case_id: str | None = None, jobs: int = 1) -> None:
 
 
 def _run_openfoam_one(config, case_dir: Path) -> None:
+    if _openfoam_completed(case_dir):
+        print(f"{case_dir}: existing OpenFOAM result found; skipping.", flush=True)
+        return
     report = migrate_case_for_foundation(case_dir)
     for note in report.notes:
         print(note)
@@ -113,6 +120,9 @@ def _export_vtk(config, case_id: str | None = None, jobs: int = 1) -> None:
 
 
 def _export_vtk_one(config, case_dir: Path) -> None:
+    if _has_valid_vtu(case_dir):
+        print(f"{case_dir}: existing VTU found; skipping export.", flush=True)
+        return
     completed = export_vtk(case_dir, config.fields.velocity, config.fields.pressure)
     print(f"{case_dir}: {completed.returncode}", flush=True)
 
@@ -135,6 +145,10 @@ def _build_graphs(config, jobs: int = 1) -> None:
 
 
 def _build_graph_one(config, case_dir: Path, output_dir: Path) -> None:
+    output_path = output_dir / f"{case_dir.name}.graph.pt"
+    if _has_valid_graph(output_path):
+        print(f"{output_path}: existing graph found; skipping build.", flush=True)
+        return
     print(f"{case_dir}: locating VTU", flush=True)
     vtu_path = latest_vtu(case_dir)
     print(f"{case_dir}: reading {vtu_path}", flush=True)
@@ -159,7 +173,6 @@ def _build_graph_one(config, case_dir: Path, output_dir: Path) -> None:
         velocity_field=config.fields.velocity,
         pressure_field=config.fields.pressure,
     )
-    output_path = output_dir / f"{case_dir.name}.graph.pt"
     print(
         f"{case_dir}: graph nodes={sample['x'].shape[0]} edges={sample['edge_index'].shape[1]} "
         f"-> {output_path}",
@@ -191,6 +204,48 @@ def _read_case_metadata(case_dir: Path) -> dict:
     import json
 
     return json.loads((case_dir / "fan_sim_case.json").read_text(encoding="utf-8"))
+
+
+def _case_metadata_matches(case_dir: Path, rpm: float, inlet_pressure: float, outlet_pressure: float) -> bool:
+    metadata_path = case_dir / "fan_sim_case.json"
+    if not metadata_path.exists():
+        return False
+    try:
+        metadata = _read_case_metadata(case_dir)
+    except (KeyError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        float(metadata["rpm"]) == float(rpm)
+        and float(metadata.get("inlet_pressure", 0.0)) == float(inlet_pressure)
+        and float(metadata["outlet_pressure"]) == float(outlet_pressure)
+    )
+
+
+def _openfoam_completed(case_dir: Path) -> bool:
+    if _has_valid_vtu(case_dir):
+        return True
+    log_path = case_dir / "log.fan-sim-openfoam"
+    if not log_path.exists():
+        return False
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    return "End\n" in text or text.rstrip().endswith("End")
+
+
+def _has_valid_vtu(case_dir: Path) -> bool:
+    try:
+        return latest_vtu(case_dir).stat().st_size > 0
+    except FileNotFoundError:
+        return False
+
+
+def _has_valid_graph(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    try:
+        sample = load_graph_sample(path)
+    except Exception:
+        return False
+    return sample.get("schema_version") == "fan-sim-graph-v1"
 
 
 def _serve(config, case_id: str, host: str, port: int) -> None:

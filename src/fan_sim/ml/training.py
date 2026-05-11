@@ -14,32 +14,58 @@ from fan_sim.ml.normalizer import GraphNormalizer
 def train_from_graphs(config: FanSimConfig, graph_paths: list[Path], epochs: int = 1) -> Path:
     if not graph_paths:
         raise ValueError("No graph paths supplied for training.")
+    output_dir = config.model.output_dir
+    checkpoint = _checkpoint_path(config)
+    train_config_path = output_dir / "train_config.yaml"
+    graph_list = [str(p) for p in graph_paths]
+    previous = _read_train_config(train_config_path)
+    if (
+        checkpoint.exists()
+        and (output_dir / "normalizer.json").exists()
+        and previous.get("backend") == config.model.backend
+        and previous.get("graphs") == graph_list
+        and int(previous.get("epochs", 0)) >= epochs
+    ):
+        print(f"{checkpoint}: existing checkpoint covers epochs={epochs}; skipping training.", flush=True)
+        return checkpoint
+
     samples = [load_graph_sample(path) for path in graph_paths]
     normalizer = GraphNormalizer.fit(samples)
     normalized_samples = [normalizer.transform(sample) for sample in samples]
 
-    output_dir = config.model.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     normalizer.save(output_dir / "normalizer.json")
+    previous_epochs = int(previous.get("epochs", 0)) if previous.get("graphs") == graph_list else 0
+    epochs_to_run = max(epochs - previous_epochs, 0)
 
     if config.model.backend == "numpy":
         model = NumpyLinearSurrogate()
         model.fit(normalized_samples)
-        checkpoint = output_dir / "checkpoint.npz"
         model.save(checkpoint)
     elif config.model.backend == "physicsnemo":
-        checkpoint = _train_physicsnemo(normalized_samples, output_dir, epochs)
+        checkpoint = _train_physicsnemo(normalized_samples, output_dir, epochs_to_run, resume=checkpoint.exists())
     else:
         raise ValueError(f"Unsupported model backend: {config.model.backend}")
 
     (output_dir / "train_config.yaml").write_text(
-        yaml.safe_dump({"backend": config.model.backend, "epochs": epochs, "graphs": [str(p) for p in graph_paths]}),
+        yaml.safe_dump({"backend": config.model.backend, "epochs": epochs, "graphs": graph_list}),
         encoding="utf-8",
     )
     return checkpoint
 
 
-def _train_physicsnemo(samples: list[dict], output_dir: Path, epochs: int) -> Path:
+def _checkpoint_path(config: FanSimConfig) -> Path:
+    suffix = ".npz" if config.model.backend == "numpy" else ".pt"
+    return config.model.output_dir / f"checkpoint{suffix}"
+
+
+def _read_train_config(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _train_physicsnemo(samples: list[dict], output_dir: Path, epochs: int, resume: bool = False) -> Path:
     first = samples[0]
     torch, Data, model = require_physicsnemo_meshgraphnet(
         PhysicsNeMoModelConfig(
@@ -50,6 +76,11 @@ def _train_physicsnemo(samples: list[dict], output_dir: Path, epochs: int) -> Pa
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
+    checkpoint = output_dir / "checkpoint.pt"
+    if resume:
+        payload = torch.load(checkpoint, map_location=device)
+        model.load_state_dict(payload["state_dict"])
+        print(f"{checkpoint}: loaded existing checkpoint.", flush=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     loss_fn = torch.nn.MSELoss()
 
@@ -69,7 +100,6 @@ def _train_physicsnemo(samples: list[dict], output_dir: Path, epochs: int) -> Pa
             loss.backward()
             optimizer.step()
 
-    checkpoint = output_dir / "checkpoint.pt"
     torch.save({"backend": "physicsnemo", "state_dict": model.state_dict()}, checkpoint)
     return checkpoint
 
