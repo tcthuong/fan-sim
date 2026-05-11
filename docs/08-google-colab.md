@@ -210,6 +210,14 @@ If you need to archive OpenFOAM outputs, do it manually after the run, preferabl
 sync_to_drive("runs/openfoam")
 ```
 
+After a Colab disconnect, run the restore cell in the no-GPU notebook. It copies previously synced data back from Google Drive:
+
+```python
+sync_from_drive_if_available("runs/openfoam", "artifacts/graphs")
+```
+
+Then rerun the normal steps. Existing cases, VTU exports, and graph files are skipped automatically when their outputs are already present.
+
 ## Full Solves
 
 Colab can technically run:
