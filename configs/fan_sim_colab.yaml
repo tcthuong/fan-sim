@@ -1,7 +1,7 @@
 base_case: data/base_case
 case_matrix:
-  rpm: [60, 180, 300, 450, 600, 750, 900, 1050, 1200, 1500]
-  outlet_pressure: [0, 20, 40, 60, 80, 100]
+  rpm: [60, 120, 240, 360, 500, 650, 800, 1000, 1200, 1500]
+  outlet_pressure: [0]
 openfoam:
   shell: bash
   solver: simpleFoam

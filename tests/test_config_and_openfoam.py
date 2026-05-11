@@ -140,8 +140,8 @@ def test_colab_config_is_a100_full_run_safe():
     assert cfg.openfoam.run_block_mesh is False
     assert cfg.openfoam.run_snappy_hex_mesh is False
     assert cfg.openfoam.run_check_mesh is False
-    assert cfg.case_matrix.rpm == [60.0, 180.0, 300.0, 450.0, 600.0, 750.0, 900.0, 1050.0, 1200.0, 1500.0]
-    assert cfg.case_matrix.outlet_pressure == [0.0, 20.0, 40.0, 60.0, 80.0, 100.0]
+    assert cfg.case_matrix.rpm == [60.0, 120.0, 240.0, 360.0, 500.0, 650.0, 800.0, 1000.0, 1200.0, 1500.0]
+    assert cfg.case_matrix.outlet_pressure == [0.0]
     assert cfg.model.backend == "physicsnemo"
 
 
