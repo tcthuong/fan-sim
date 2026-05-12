@@ -44,3 +44,19 @@ model:
 
     assert training.train_from_graphs(cfg, [graph_path], epochs=1) == checkpoint
 
+
+def test_induced_subgraph_remaps_edges():
+    sample = {
+        "schema_version": "fan-sim-graph-v1",
+        "x": np.arange(12, dtype=np.float32).reshape(4, 3),
+        "pos": np.arange(12, dtype=np.float32).reshape(4, 3),
+        "y": np.arange(8, dtype=np.float32).reshape(4, 2),
+        "edge_index": np.array([[0, 1, 1, 2, 2, 3], [1, 0, 2, 1, 3, 2]], dtype=np.int64),
+        "edge_attr": np.arange(24, dtype=np.float32).reshape(6, 4),
+    }
+
+    sampled = training._induced_subgraph(sample, np.array([1, 2], dtype=np.int64))
+
+    assert sampled["x"].shape == (2, 3)
+    assert sampled["edge_index"].tolist() == [[0, 1], [1, 0]]
+    assert sampled["edge_attr"].shape == (2, 4)

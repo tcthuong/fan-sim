@@ -18,6 +18,8 @@ model:
   output_dir: artifacts/models/fan_mgn_colab_a100
   processor_size: 3
   hidden_dim: 32
+  max_nodes_per_graph: 100000
+  sample_seed: 42
 omniverse:
   kit_cae_root: /content/kit-cae
   export_point_data: true

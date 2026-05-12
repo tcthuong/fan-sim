@@ -24,12 +24,16 @@ def train_from_graphs(config: FanSimConfig, graph_paths: list[Path], epochs: int
         and (output_dir / "normalizer.json").exists()
         and previous.get("backend") == config.model.backend
         and previous.get("graphs") == graph_list
+        and previous.get("processor_size") == config.model.processor_size
+        and previous.get("hidden_dim") == config.model.hidden_dim
+        and previous.get("max_nodes_per_graph") == config.model.max_nodes_per_graph
+        and previous.get("sample_seed") == config.model.sample_seed
         and int(previous.get("epochs", 0)) >= epochs
     ):
         print(f"{checkpoint}: existing checkpoint covers epochs={epochs}; skipping training.", flush=True)
         return checkpoint
 
-    samples = [load_graph_sample(path) for path in graph_paths]
+    samples = [_sample_for_training(config, load_graph_sample(path), index) for index, path in enumerate(graph_paths)]
     normalizer = GraphNormalizer.fit(samples)
     normalized_samples = [normalizer.transform(sample) for sample in samples]
 
@@ -48,10 +52,61 @@ def train_from_graphs(config: FanSimConfig, graph_paths: list[Path], epochs: int
         raise ValueError(f"Unsupported model backend: {config.model.backend}")
 
     (output_dir / "train_config.yaml").write_text(
-        yaml.safe_dump({"backend": config.model.backend, "epochs": epochs, "graphs": graph_list}),
+        yaml.safe_dump(
+            {
+                "backend": config.model.backend,
+                "epochs": epochs,
+                "graphs": graph_list,
+                "processor_size": config.model.processor_size,
+                "hidden_dim": config.model.hidden_dim,
+                "max_nodes_per_graph": config.model.max_nodes_per_graph,
+                "sample_seed": config.model.sample_seed,
+            }
+        ),
         encoding="utf-8",
     )
     return checkpoint
+
+
+def _sample_for_training(config: FanSimConfig, sample: dict, index: int) -> dict:
+    max_nodes = config.model.max_nodes_per_graph
+    if max_nodes is None:
+        return sample
+    n_nodes = int(np.asarray(sample["x"]).shape[0])
+    if n_nodes <= max_nodes:
+        return sample
+    rng = np.random.default_rng(config.model.sample_seed + index)
+    node_ids = np.sort(rng.choice(n_nodes, size=max_nodes, replace=False))
+    sampled = _induced_subgraph(sample, node_ids)
+    print(
+        f"{sample.get('case_meta', {}).get('case_id', '<graph>')}: sampled nodes "
+        f"{n_nodes} -> {sampled['x'].shape[0]}, edges {sample['edge_index'].shape[1]} -> {sampled['edge_index'].shape[1]}",
+        flush=True,
+    )
+    return sampled
+
+
+def _induced_subgraph(sample: dict, node_ids: np.ndarray) -> dict:
+    node_ids = np.asarray(node_ids, dtype=np.int64)
+    n_nodes = int(np.asarray(sample["x"]).shape[0])
+    node_mask = np.zeros(n_nodes, dtype=bool)
+    node_mask[node_ids] = True
+    remap = np.full(n_nodes, -1, dtype=np.int64)
+    remap[node_ids] = np.arange(node_ids.shape[0], dtype=np.int64)
+
+    edge_index = np.asarray(sample["edge_index"], dtype=np.int64)
+    edge_mask = node_mask[edge_index[0]] & node_mask[edge_index[1]]
+    sampled_edges = edge_index[:, edge_mask]
+
+    sampled = dict(sample)
+    sampled["case_meta"] = dict(sample.get("case_meta", {}))
+    sampled["x"] = np.asarray(sample["x"])[node_ids]
+    sampled["y"] = np.asarray(sample["y"])[node_ids]
+    if "pos" in sample:
+        sampled["pos"] = np.asarray(sample["pos"])[node_ids]
+    sampled["edge_index"] = remap[sampled_edges]
+    sampled["edge_attr"] = np.asarray(sample["edge_attr"])[edge_mask]
+    return sampled
 
 
 def _checkpoint_path(config: FanSimConfig) -> Path:

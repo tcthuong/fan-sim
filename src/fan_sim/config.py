@@ -49,6 +49,8 @@ class ModelConfig:
     output_dir: Path = Path("artifacts/models/fan_mgn")
     processor_size: int = 15
     hidden_dim: int = 128
+    max_nodes_per_graph: int | None = None
+    sample_seed: int = 0
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,8 @@ def load_config(path: str | Path) -> FanSimConfig:
             output_dir=_as_path(model_raw.get("output_dir", "artifacts/models/fan_mgn"), root),
             processor_size=int(model_raw.get("processor_size", 15)),
             hidden_dim=int(model_raw.get("hidden_dim", 128)),
+            max_nodes_per_graph=_optional_int(model_raw.get("max_nodes_per_graph")),
+            sample_seed=int(model_raw.get("sample_seed", 0)),
         ),
         omniverse=OmniverseConfig(
             kit_cae_root=Path(omni_raw.get("kit_cae_root", "D:/nvidia/kit-cae")),
@@ -124,6 +128,10 @@ def expand_case_matrix(config: FanSimConfig) -> list[CaseSpec]:
 def _as_path(value: Any, root: Path) -> Path:
     path = Path(str(value))
     return path if path.is_absolute() else root / path
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if value is None else int(value)
 
 
 def _format_number(value: float, width: int) -> str:

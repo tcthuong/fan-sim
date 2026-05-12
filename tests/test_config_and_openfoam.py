@@ -145,6 +145,8 @@ def test_colab_config_is_a100_full_run_safe():
     assert cfg.model.backend == "physicsnemo"
     assert cfg.model.processor_size == 3
     assert cfg.model.hidden_dim == 32
+    assert cfg.model.max_nodes_per_graph == 100000
+    assert cfg.model.sample_seed == 42
 
 
 def test_colab_notebook_is_valid_json():

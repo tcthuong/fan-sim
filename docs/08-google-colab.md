@@ -146,10 +146,12 @@ model:
   output_dir: artifacts/models/fan_mgn_colab_a100
   processor_size: 3
   hidden_dim: 32
+  max_nodes_per_graph: 100000
+  sample_seed: 42
 ```
 
 This expands to 10 cases. The first Colab run sweeps RPM only, with enough spread from 60 to 1500 RPM for visibly different flow fields while keeping outlet pressure fixed.
-The Colab model size is intentionally smaller than the production default so a large single graph can fit on an A100.
+The Colab model size is intentionally smaller than the production default, and training samples an induced subgraph from each large CFD graph so MeshGraphNet can fit on an A100.
 
 For a quick smoke run, make a temporary copy of this config and reduce the matrix instead of editing the committed Colab config.
 
