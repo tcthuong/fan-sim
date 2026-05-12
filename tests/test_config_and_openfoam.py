@@ -133,7 +133,7 @@ openfoam:
         load_config(cfg_path)
 
 
-def test_colab_config_is_a100_full_run_safe():
+def test_colab_config_is_h100_quality_profile():
     cfg = load_config(Path("configs/fan_sim_colab.yaml"))
 
     assert cfg.openfoam.shell == "bash"
@@ -143,9 +143,9 @@ def test_colab_config_is_a100_full_run_safe():
     assert cfg.case_matrix.rpm == [60.0, 120.0, 240.0, 360.0, 500.0, 650.0, 800.0, 1000.0, 1200.0, 1500.0]
     assert cfg.case_matrix.outlet_pressure == [0.0]
     assert cfg.model.backend == "physicsnemo"
-    assert cfg.model.processor_size == 3
-    assert cfg.model.hidden_dim == 32
-    assert cfg.model.max_nodes_per_graph == 100000
+    assert cfg.model.processor_size == 15
+    assert cfg.model.hidden_dim == 256
+    assert cfg.model.max_nodes_per_graph == 800000
     assert cfg.model.sample_seed == 42
 
 

@@ -143,15 +143,15 @@ case_matrix:
   outlet_pressure: [0]
 model:
   backend: physicsnemo
-  output_dir: artifacts/models/fan_mgn_colab_a100
-  processor_size: 3
-  hidden_dim: 32
-  max_nodes_per_graph: 100000
+  output_dir: artifacts/models/fan_mgn_colab_h100_quality
+  processor_size: 15
+  hidden_dim: 256
+  max_nodes_per_graph: 800000
   sample_seed: 42
 ```
 
 This expands to 10 cases. The first Colab run sweeps RPM only, with enough spread from 60 to 1500 RPM for visibly different flow fields while keeping outlet pressure fixed.
-The Colab model size is intentionally smaller than the production default, and training samples an induced subgraph from each large CFD graph so MeshGraphNet can fit on an A100.
+This H100 quality profile should use much more of the GPU than the earlier smoke profile, and training still samples an induced subgraph from each large CFD graph before MeshGraphNet runs. If the runtime is actually a smaller 32 GB GPU, reduce to roughly `processor_size: 8`, `hidden_dim: 128`, and `max_nodes_per_graph: 300000` before training.
 
 For a quick smoke run, make a temporary copy of this config and reduce the matrix instead of editing the committed Colab config.
 
