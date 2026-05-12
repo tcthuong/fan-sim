@@ -6,8 +6,14 @@ description = "Calls the Fan-Sim local inference service and loads prediction ar
 
 [dependencies]
 "omni.kit.uiapp" = {}
+"omni.kit.commands" = {}
 "omni.usd" = {}
+"omni.cae.schema" = {}
+"omni.cae.data" = {}
+"omni.cae.viz" = {}
+"omni.cae.importer.vtk" = {}
+"omni.cae.flow" = {}
+"omni.flowusd" = {}
 
 [[python.module]]
 name = "omni.fan_sim"
-

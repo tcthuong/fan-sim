@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import math
+import re
 
 import pytest
 
@@ -74,7 +76,7 @@ def test_clone_parameterized_case_replaces_placeholders(tmp_path: Path):
     (base_case / "0").mkdir(parents=True)
     (base_case / "constant").mkdir()
     (base_case / "system").mkdir()
-    (base_case / "constant" / "MRFProperties").write_text("omega {{RPM}}\n", encoding="utf-8")
+    (base_case / "constant" / "MRFProperties").write_text("omega {{RPM}};\n", encoding="utf-8")
     (base_case / "0" / "p").write_text("outlet {{OUTLET_PRESSURE}}\n", encoding="utf-8")
 
     generated = clone_parameterized_case(
@@ -87,9 +89,71 @@ def test_clone_parameterized_case_replaces_placeholders(tmp_path: Path):
     )
 
     assert generated.case_dir.name == "case_rpm_1200_pout_020"
-    assert "1200" in (generated.case_dir / "constant" / "MRFProperties").read_text(encoding="utf-8")
+    assert _read_mrf_omega(generated.case_dir) == pytest.approx(1200 * 2 * math.pi / 60)
     assert "20" in (generated.case_dir / "0" / "p").read_text(encoding="utf-8")
     assert (generated.case_dir / "fan_sim_case.json").exists()
+
+
+def test_clone_parameterized_case_patches_literal_mrf_omega_and_pressure(tmp_path: Path):
+    import gzip
+
+    base_case = tmp_path / "base_case"
+    (base_case / "0").mkdir(parents=True)
+    (base_case / "constant").mkdir()
+    (base_case / "system").mkdir()
+    (base_case / "constant" / "MRFProperties").write_text(
+        """
+rotating_zone_0_0
+{
+    omega constant 200.0;
+}
+""",
+        encoding="utf-8",
+    )
+    with gzip.open(base_case / "0" / "p.gz", "wt", encoding="utf-8") as stream:
+        stream.write(
+            """
+boundaryField
+{
+    face5
+    {
+        type fixedValue;
+        value uniform 0;
+    }
+}
+"""
+        )
+
+    generated_500 = clone_parameterized_case(
+        base_case=base_case,
+        output_root=tmp_path / "runs",
+        case_id="case_rpm_0500_pout_020",
+        rpm=500,
+        inlet_pressure=0.0,
+        outlet_pressure=20.0,
+    )
+    generated_1000 = clone_parameterized_case(
+        base_case=base_case,
+        output_root=tmp_path / "runs",
+        case_id="case_rpm_1000_pout_040",
+        rpm=1000,
+        inlet_pressure=0.0,
+        outlet_pressure=40.0,
+    )
+
+    assert _read_mrf_omega(generated_500.case_dir) == pytest.approx(500 * 2 * math.pi / 60)
+    assert _read_mrf_omega(generated_1000.case_dir) == pytest.approx(1000 * 2 * math.pi / 60)
+    with gzip.open(generated_500.case_dir / "0" / "p.gz", "rt", encoding="utf-8") as stream:
+        assert "value uniform 20;" in stream.read()
+    with gzip.open(generated_1000.case_dir / "0" / "p.gz", "rt", encoding="utf-8") as stream:
+        assert "value uniform 40;" in stream.read()
+
+
+def _read_mrf_omega(case_dir: Path) -> float:
+    text = (case_dir / "constant" / "MRFProperties").read_text(encoding="utf-8")
+    match = re.search(r"\bomega\s+constant\s+([-+0-9.eE]+)\s*;", text)
+    assert match is not None
+    return float(match.group(1))
 
 
 def test_bash_command_builds_native_ubuntu_case_path():
