@@ -60,3 +60,36 @@ def test_induced_subgraph_remaps_edges():
     assert sampled["x"].shape == (2, 3)
     assert sampled["edge_index"].tolist() == [[0, 1], [1, 0]]
     assert sampled["edge_attr"].shape == (2, 4)
+
+
+def test_completed_epochs_requires_matching_model_config(tmp_path: Path):
+    cfg_path = tmp_path / "fan_sim.yaml"
+    cfg_path.write_text(
+        """
+base_case: data/base_case
+case_matrix:
+  rpm: [600]
+  outlet_pressure: [0]
+model:
+  backend: physicsnemo
+  output_dir: artifacts/models/test_model
+  processor_size: 3
+  hidden_dim: 32
+  max_nodes_per_graph: 1000
+  sample_seed: 42
+""",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_path)
+    previous = {
+        "backend": "physicsnemo",
+        "graphs": ["a.graph.pt"],
+        "processor_size": 3,
+        "hidden_dim": 32,
+        "max_nodes_per_graph": 1000,
+        "sample_seed": 42,
+        "completed_epochs": 7,
+    }
+
+    assert training._completed_epochs(previous, cfg, ["a.graph.pt"]) == 7
+    assert training._completed_epochs({**previous, "hidden_dim": 16}, cfg, ["a.graph.pt"]) == 0

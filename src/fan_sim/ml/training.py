@@ -33,39 +33,91 @@ def train_from_graphs(config: FanSimConfig, graph_paths: list[Path], epochs: int
         print(f"{checkpoint}: existing checkpoint covers epochs={epochs}; skipping training.", flush=True)
         return checkpoint
 
+    print(
+        "Training setup: "
+        f"backend={config.model.backend}, graphs={len(graph_paths)}, epochs={epochs}, "
+        f"processor_size={config.model.processor_size}, hidden_dim={config.model.hidden_dim}, "
+        f"max_nodes_per_graph={config.model.max_nodes_per_graph}",
+        flush=True,
+    )
     samples = [_sample_for_training(config, load_graph_sample(path), index) for index, path in enumerate(graph_paths)]
+    _log_sample_summary(samples)
     normalizer = GraphNormalizer.fit(samples)
     normalized_samples = [normalizer.transform(sample) for sample in samples]
 
     output_dir.mkdir(parents=True, exist_ok=True)
     normalizer.save(output_dir / "normalizer.json")
-    previous_epochs = int(previous.get("epochs", 0)) if previous.get("graphs") == graph_list else 0
+    previous_epochs = _completed_epochs(previous, config, graph_list)
     epochs_to_run = max(epochs - previous_epochs, 0)
+    _write_train_config(config, train_config_path, graph_list, requested_epochs=epochs, completed_epochs=previous_epochs)
 
     if config.model.backend == "numpy":
         model = NumpyLinearSurrogate()
         model.fit(normalized_samples)
         model.save(checkpoint)
     elif config.model.backend == "physicsnemo":
-        checkpoint = _train_physicsnemo(config, normalized_samples, output_dir, epochs_to_run, resume=checkpoint.exists())
+        checkpoint = _train_physicsnemo(
+            config,
+            normalized_samples,
+            output_dir,
+            train_config_path,
+            graph_list,
+            requested_epochs=epochs,
+            completed_epochs=previous_epochs,
+            epochs_to_run=epochs_to_run,
+            resume=checkpoint.exists(),
+        )
     else:
         raise ValueError(f"Unsupported model backend: {config.model.backend}")
 
-    (output_dir / "train_config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "backend": config.model.backend,
-                "epochs": epochs,
-                "graphs": graph_list,
-                "processor_size": config.model.processor_size,
-                "hidden_dim": config.model.hidden_dim,
-                "max_nodes_per_graph": config.model.max_nodes_per_graph,
-                "sample_seed": config.model.sample_seed,
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_train_config(config, train_config_path, graph_list, requested_epochs=epochs, completed_epochs=epochs)
     return checkpoint
+
+
+def _log_sample_summary(samples: list[dict]) -> None:
+    total_nodes = sum(int(np.asarray(sample["x"]).shape[0]) for sample in samples)
+    total_edges = sum(int(np.asarray(sample["edge_index"]).shape[1]) for sample in samples)
+    print(
+        f"Training samples ready: samples={len(samples)}, total_nodes={total_nodes}, total_edges={total_edges}",
+        flush=True,
+    )
+
+
+def _completed_epochs(previous: dict, config: FanSimConfig, graph_list: list[str]) -> int:
+    if (
+        previous.get("backend") == config.model.backend
+        and previous.get("graphs") == graph_list
+        and previous.get("processor_size") == config.model.processor_size
+        and previous.get("hidden_dim") == config.model.hidden_dim
+        and previous.get("max_nodes_per_graph") == config.model.max_nodes_per_graph
+        and previous.get("sample_seed") == config.model.sample_seed
+    ):
+        return int(previous.get("completed_epochs", previous.get("epochs", 0)))
+    return 0
+
+
+def _write_train_config(
+    config: FanSimConfig,
+    path: Path,
+    graph_list: list[str],
+    *,
+    requested_epochs: int,
+    completed_epochs: int,
+    last_loss: float | None = None,
+) -> None:
+    payload = {
+        "backend": config.model.backend,
+        "epochs": requested_epochs,
+        "completed_epochs": completed_epochs,
+        "graphs": graph_list,
+        "processor_size": config.model.processor_size,
+        "hidden_dim": config.model.hidden_dim,
+        "max_nodes_per_graph": config.model.max_nodes_per_graph,
+        "sample_seed": config.model.sample_seed,
+    }
+    if last_loss is not None:
+        payload["last_loss"] = float(last_loss)
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
 
 
 def _sample_for_training(config: FanSimConfig, sample: dict, index: int) -> dict:
@@ -120,7 +172,18 @@ def _read_train_config(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _train_physicsnemo(config: FanSimConfig, samples: list[dict], output_dir: Path, epochs: int, resume: bool = False) -> Path:
+def _train_physicsnemo(
+    config: FanSimConfig,
+    samples: list[dict],
+    output_dir: Path,
+    train_config_path: Path,
+    graph_list: list[str],
+    *,
+    requested_epochs: int,
+    completed_epochs: int,
+    epochs_to_run: int,
+    resume: bool = False,
+) -> Path:
     first = samples[0]
     torch, Data, model = require_physicsnemo_meshgraphnet(
         PhysicsNeMoModelConfig(
@@ -137,13 +200,21 @@ def _train_physicsnemo(config: FanSimConfig, samples: list[dict], output_dir: Pa
     if resume:
         payload = torch.load(checkpoint, map_location=device)
         model.load_state_dict(payload["state_dict"])
-        print(f"{checkpoint}: loaded existing checkpoint.", flush=True)
+        completed_epochs = int(payload.get("completed_epochs", completed_epochs))
+        epochs_to_run = max(requested_epochs - completed_epochs, 0)
+        print(f"{checkpoint}: loaded existing checkpoint at epoch {completed_epochs}.", flush=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     loss_fn = torch.nn.MSELoss()
 
-    for _ in range(epochs):
+    if epochs_to_run == 0:
+        print(f"{checkpoint}: no remaining epochs; skipping PhysicsNeMo training.", flush=True)
+        return checkpoint
+
+    for epoch_offset in range(epochs_to_run):
+        epoch = completed_epochs + epoch_offset + 1
         model.train()
-        for sample in samples:
+        epoch_loss = 0.0
+        for sample_index, sample in enumerate(samples, start=1):
             graph = Data(
                 edge_index=torch.as_tensor(sample["edge_index"], dtype=torch.long, device=device),
                 num_nodes=int(sample["x"].shape[0]),
@@ -156,7 +227,32 @@ def _train_physicsnemo(config: FanSimConfig, samples: list[dict], output_dir: Pa
             loss = loss_fn(pred, y)
             loss.backward()
             optimizer.step()
+            loss_value = float(loss.detach().cpu())
+            epoch_loss += loss_value
+            print(
+                f"epoch {epoch}/{requested_epochs} sample {sample_index}/{len(samples)} "
+                f"nodes={x.shape[0]} edges={edge_attr.shape[0]} loss={loss_value:.6g}",
+                flush=True,
+            )
+        avg_loss = epoch_loss / max(len(samples), 1)
+        torch.save(
+            {
+                "backend": "physicsnemo",
+                "state_dict": model.state_dict(),
+                "completed_epochs": epoch,
+                "last_loss": avg_loss,
+            },
+            checkpoint,
+        )
+        _write_train_config(
+            config,
+            train_config_path,
+            graph_list,
+            requested_epochs=requested_epochs,
+            completed_epochs=epoch,
+            last_loss=avg_loss,
+        )
+        print(f"epoch {epoch}/{requested_epochs} done avg_loss={avg_loss:.6g}; checkpoint={checkpoint}", flush=True)
 
-    torch.save({"backend": "physicsnemo", "state_dict": model.state_dict()}, checkpoint)
     return checkpoint
 
