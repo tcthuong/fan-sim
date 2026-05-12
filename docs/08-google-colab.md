@@ -87,6 +87,16 @@ For PhysicsNeMo:
 !python -m pip install -e ".[ml]"
 ```
 
+Install `torch-scatter` from the PyG wheel index that matches the active Torch/CUDA runtime:
+
+```python
+import subprocess, sys, torch
+torch_version = torch.__version__.split("+")[0]
+cuda_tag = "cpu" if torch.version.cuda is None else "cu" + torch.version.cuda.replace(".", "")
+wheel_url = f"https://data.pyg.org/whl/torch-{torch_version}+{cuda_tag}.html"
+subprocess.check_call([sys.executable, "-m", "pip", "install", "torch-scatter", "-f", wheel_url])
+```
+
 Verify:
 
 ```python
@@ -97,7 +107,7 @@ Verify:
 PhysicsNeMo verification:
 
 ```python
-!python -c "from physicsnemo.models.meshgraphnet.meshgraphnet import MeshGraphNet; print('MeshGraphNet ok')"
+!python -c "import torch_geometric, torch_scatter; from physicsnemo.models.meshgraphnet.meshgraphnet import MeshGraphNet; print('MeshGraphNet ok')"
 ```
 
 The project pins `warp-lang<1.13` because PhysicsNeMo 2.0 imports `warp.context`.
