@@ -143,6 +143,8 @@ def test_colab_config_is_a100_full_run_safe():
     assert cfg.case_matrix.rpm == [60.0, 120.0, 240.0, 360.0, 500.0, 650.0, 800.0, 1000.0, 1200.0, 1500.0]
     assert cfg.case_matrix.outlet_pressure == [0.0]
     assert cfg.model.backend == "physicsnemo"
+    assert cfg.model.processor_size == 3
+    assert cfg.model.hidden_dim == 32
 
 
 def test_colab_notebook_is_valid_json():

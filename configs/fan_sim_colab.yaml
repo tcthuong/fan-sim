@@ -16,6 +16,8 @@ fields:
 model:
   backend: physicsnemo
   output_dir: artifacts/models/fan_mgn_colab_a100
+  processor_size: 3
+  hidden_dim: 32
 omniverse:
   kit_cae_root: /content/kit-cae
   export_point_data: true

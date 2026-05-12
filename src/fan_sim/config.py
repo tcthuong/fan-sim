@@ -47,6 +47,8 @@ class FieldsConfig:
 class ModelConfig:
     backend: str = "physicsnemo"
     output_dir: Path = Path("artifacts/models/fan_mgn")
+    processor_size: int = 15
+    hidden_dim: int = 128
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,8 @@ def load_config(path: str | Path) -> FanSimConfig:
         model=ModelConfig(
             backend=str(model_raw.get("backend", "physicsnemo")),
             output_dir=_as_path(model_raw.get("output_dir", "artifacts/models/fan_mgn"), root),
+            processor_size=int(model_raw.get("processor_size", 15)),
+            hidden_dim=int(model_raw.get("hidden_dim", 128)),
         ),
         omniverse=OmniverseConfig(
             kit_cae_root=Path(omni_raw.get("kit_cae_root", "D:/nvidia/kit-cae")),

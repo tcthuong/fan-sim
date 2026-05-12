@@ -43,7 +43,7 @@ def train_from_graphs(config: FanSimConfig, graph_paths: list[Path], epochs: int
         model.fit(normalized_samples)
         model.save(checkpoint)
     elif config.model.backend == "physicsnemo":
-        checkpoint = _train_physicsnemo(normalized_samples, output_dir, epochs_to_run, resume=checkpoint.exists())
+        checkpoint = _train_physicsnemo(config, normalized_samples, output_dir, epochs_to_run, resume=checkpoint.exists())
     else:
         raise ValueError(f"Unsupported model backend: {config.model.backend}")
 
@@ -65,13 +65,15 @@ def _read_train_config(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _train_physicsnemo(samples: list[dict], output_dir: Path, epochs: int, resume: bool = False) -> Path:
+def _train_physicsnemo(config: FanSimConfig, samples: list[dict], output_dir: Path, epochs: int, resume: bool = False) -> Path:
     first = samples[0]
     torch, Data, model = require_physicsnemo_meshgraphnet(
         PhysicsNeMoModelConfig(
             input_dim_nodes=int(first["x"].shape[1]),
             input_dim_edges=int(first["edge_attr"].shape[1]),
             output_dim=int(first["y"].shape[1]),
+            processor_size=config.model.processor_size,
+            hidden_dim=config.model.hidden_dim,
         )
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"

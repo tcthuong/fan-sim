@@ -18,7 +18,7 @@ def load_predictor_from_artifacts(config: FanSimConfig, case_id: str) -> FanPred
     if config.model.backend == "numpy":
         model = NumpyLinearSurrogate.load(config.model.output_dir / "checkpoint.npz")
     elif config.model.backend == "physicsnemo":
-        model = _load_physicsnemo_predict_model(config.model.output_dir / "checkpoint.pt", template)
+        model = _load_physicsnemo_predict_model(config, template)
     else:
         raise ValueError(f"Unsupported model backend: {config.model.backend}")
     return FanPredictor(model=model, template_sample=template, normalizer=normalizer)
@@ -37,7 +37,7 @@ def _load_template_sample(graph_dir: Path, case_id: str) -> dict[str, Any]:
 
 
 class _PhysicsNeMoPredictModel:
-    def __init__(self, checkpoint: Path, template: dict[str, Any]):
+    def __init__(self, config: FanSimConfig, template: dict[str, Any]):
         import torch
 
         self.torch = torch
@@ -46,10 +46,13 @@ class _PhysicsNeMoPredictModel:
                 input_dim_nodes=int(template["x"].shape[1]),
                 input_dim_edges=int(template["edge_attr"].shape[1]),
                 output_dim=4,
+                processor_size=config.model.processor_size,
+                hidden_dim=config.model.hidden_dim,
             )
         )
         self.Data = Data
         self.device = "cuda" if torch_module.cuda.is_available() else "cpu"
+        checkpoint = config.model.output_dir / "checkpoint.pt"
         payload = torch_module.load(checkpoint, map_location=self.device)
         model.load_state_dict(payload["state_dict"] if "state_dict" in payload else payload)
         self.model = model.to(self.device)
@@ -68,8 +71,9 @@ class _PhysicsNeMoPredictModel:
         return pred.detach().cpu().numpy()
 
 
-def _load_physicsnemo_predict_model(checkpoint: Path, template: dict[str, Any]) -> _PhysicsNeMoPredictModel:
+def _load_physicsnemo_predict_model(config: FanSimConfig, template: dict[str, Any]) -> _PhysicsNeMoPredictModel:
+    checkpoint = config.model.output_dir / "checkpoint.pt"
     if not checkpoint.exists():
         raise FileNotFoundError(f"PhysicsNeMo checkpoint not found: {checkpoint}")
-    return _PhysicsNeMoPredictModel(checkpoint, template)
+    return _PhysicsNeMoPredictModel(config, template)
 
