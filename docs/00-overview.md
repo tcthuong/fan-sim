@@ -14,7 +14,7 @@ base OpenFOAM case
   -> PhysicsNeMo MeshGraphNet training
   -> checkpoint + normalizer
   -> local inference API
-  -> prediction.vtu + prediction.usda
+  -> prediction.vtu + prediction.usda + fan_mesh.usda
   -> Kit-CAE visualization
 ```
 
@@ -25,7 +25,7 @@ base OpenFOAM case
 - `fan_sim.graph`: converts cell-centered mesh data into PyTorch graph samples.
 - `fan_sim.ml`: normalizes data, loads datasets, trains/evaluates MeshGraphNet, and saves checkpoints.
 - `fan_sim.inference`: loads a trained model, rebuilds features for a new RPM/boundary condition, predicts fields, and denormalizes outputs.
-- `fan_sim.export`: writes VTU/USD outputs and streamline/particle seed artifacts for visualization.
+- `fan_sim.export`: writes topology-preserving VTU/USD outputs, optional fan boundary mesh USD, and streamline/particle seed artifacts for visualization.
 - `fan_sim.service`: exposes a local FastAPI inference API for Omniverse.
 - `extensions/omni.fan_sim`: a Kit extension scaffold that calls the local service and loads results into the active stage.
 

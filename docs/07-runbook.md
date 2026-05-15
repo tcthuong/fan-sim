@@ -245,6 +245,7 @@ Outputs:
 ```text
 runs/inference/case_rpm_0600_pout_000_rpm1200/prediction.vtu
 runs/inference/case_rpm_0600_pout_000_rpm1200/prediction.usda
+runs/inference/case_rpm_0600_pout_000_rpm1200/fan_mesh.usda
 runs/inference/case_rpm_0600_pout_000_rpm1200/streamline_seeds.json
 runs/inference/case_rpm_0600_pout_000_rpm1200/particle_seeds.json
 ```
@@ -287,7 +288,13 @@ The Fan-Sim extension is:
 D:\nvidia\fan-sim\extensions\omni.fan_sim
 ```
 
-The extension calls the Ubuntu service, receives `prediction.usda` and `prediction.vtu`, and loads predicted fields for pressure/velocity contours, streamlines, slices, volume views, and passive particle traces.
+The extension calls the Ubuntu service, receives `prediction.usda`, `prediction.vtu`, and optional `fan_mesh.usda`, then loads predicted fields for pressure/velocity contours, streamlines, slices, volume views, and passive particle traces.
+
+For the detailed click-by-click Kit predict test, use:
+
+```text
+docs/09-kit-predict.md
+```
 
 ## 13. Verified Smoke Result On This Machine
 

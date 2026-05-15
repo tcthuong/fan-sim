@@ -60,12 +60,27 @@ def main(argv: list[str] | None = None) -> int:
         predictor = load_predictor_from_artifacts(config, args.case_id)
         result = predictor.predict(rpm=args.rpm, inlet_pressure=args.inlet_pressure, outlet_pressure=args.outlet_pressure)
         output_dir = config.root / "runs/inference" / f"{args.case_id}_rpm{int(round(args.rpm)):04d}"
-        artifacts = export_prediction_artifacts(result, output_dir=output_dir, write_vtu=True)
+        artifacts = export_prediction_artifacts(
+            result,
+            output_dir=output_dir,
+            write_vtu=True,
+            write_streamlines_usd=True,
+            write_particles_usd=True,
+        )
         print(
             json.dumps(
                 {
                     "prediction_vtu": str(artifacts.prediction_vtu),
                     "prediction_usd": str(artifacts.prediction_usd),
+                    "fan_mesh_usd": str(artifacts.fan_mesh_usd) if artifacts.fan_mesh_usd is not None else None,
+                    "prediction_streamlines_usd": (
+                        str(artifacts.prediction_streamlines_usd)
+                        if artifacts.prediction_streamlines_usd is not None
+                        else None
+                    ),
+                    "prediction_particles_usd": (
+                        str(artifacts.prediction_particles_usd) if artifacts.prediction_particles_usd is not None else None
+                    ),
                     "streamline_seeds_json": str(artifacts.streamline_seeds_json),
                     "particle_seeds_json": str(artifacts.particle_seeds_json),
                 },
