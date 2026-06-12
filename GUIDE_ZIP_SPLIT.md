@@ -1,5 +1,37 @@
 # Hướng Dẫn Zip Split Có Password Trên Ubuntu
 
+## 0. Lấy Branch `factory` Từ GitHub
+
+### Clone lần đầu
+
+```bash
+git clone --branch factory https://github.com/tcthuong/fan-sim.git
+cd fan-sim
+```
+
+### Nếu đã clone repo rồi
+
+```bash
+cd fan-sim
+git fetch origin
+git checkout factory
+git pull origin factory
+```
+
+### Xác nhận đang ở đúng branch
+
+```bash
+git branch
+```
+
+Output phải hiện:
+
+```text
+* factory
+```
+
+---
+
 Guide này dùng để nén folder `proj` thành nhiều file nhỏ, mỗi part tối đa `90M`, có mã hóa bằng password.
 
 Password không được ghi vào guide, README, tên file, hoặc command trong tài liệu này. Nếu chữ tiếng Việt bị lỗi dấu trong editor hoặc terminal, hãy mở file này bằng encoding `UTF-8`.
