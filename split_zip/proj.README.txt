@@ -1,0 +1,11 @@
+Created from: /mnt/d/nvidia/factory_monitor_custom_only_handoff/factory_monitor_custom_only_handoff/proj
+Part size: 90M
+Encrypted: yes, OpenSSL AES-256-CBC with PBKDF2
+
+Restore on Ubuntu:
+  bash scripts/unzip_split.sh "split_zip" restored "proj"
+
+Or manually:
+  cat "proj.zip.enc.part-"* > "proj.zip.enc"
+  openssl enc -d -aes-256-cbc -pbkdf2 -in "proj.zip.enc" -out "proj.zip"
+  python3 -m zipfile -e "proj.zip" restored

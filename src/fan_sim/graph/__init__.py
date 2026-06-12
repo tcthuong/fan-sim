@@ -1,2 +1,0 @@
-"""Cell-centered graph construction."""
-

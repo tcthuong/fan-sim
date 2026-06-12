@@ -1,1 +1,0 @@
-# Keep the data directory in git. Put the OpenFOAM base case under data/base_case; that folder is ignored.
