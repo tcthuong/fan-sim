@@ -263,3 +263,172 @@ fan-sim/robot/
 ├── isaac_gui_sync.py     ← đồng bộ URSim → Isaac Sim GUI (Script Editor)
 └── isaac_debug.py        ← debug helper cho Script Editor
 ```
+
+---
+
+## 10. Lỗi đã gặp & cách fix
+
+### 10.1 URControl: robot mãi DISCONNECTED
+
+**Triệu chứng:** PolyScope GUI hiện "Robot Disconnected", RTDE không connect được.
+
+**Nguyên nhân:** URControl start trước khi PolyScope mở port 29919.
+
+**Fix:** `start-ursim.sh` chờ port 29919 mở (vòng lặp 30 giây) trước khi
+khởi động URControl. Nếu vẫn lỗi, chạy lại `start-ursim.sh`.
+
+---
+
+### 10.2 URControl crash ngay khi khởi động (qemu-i386)
+
+**Triệu chứng:** Log `/root/ursim-logs/urcontrol.log` in ra lỗi `ENOTSUP`
+hoặc `Operation not supported`, process thoát ngay.
+
+**Nguyên nhân:** `pthread_mutexattr_setprotocol` và các hàm priority-inheritance
+không được qemu-i386 user-mode hỗ trợ.
+
+**Fix:** LD_PRELOAD `mutexshim32.so` để stub các hàm này về `return 0`.
+Nếu file chưa tồn tại:
+```bash
+gcc -m32 -shared -fPIC -o /root/mutexshim32.so /root/mutexshim.c
+```
+
+---
+
+### 10.3 `rtde_control`: "RTDE control script is not running!"
+
+**Triệu chứng:**
+```
+RTDEControlInterface: RTDE control script is not running!
+```
+
+**Nguyên nhân:** URControl chưa upload script điều khiển lên robot, hoặc
+script bị reset sau khi robot idle.
+
+**Fix:** Gọi `rtde_c.reuploadScript()` trước mỗi lần `moveJ`/`moveL`:
+```python
+if not rtde_c.isProgramRunning():
+    rtde_c.reuploadScript()
+rtde_c.moveJ(joints, speed, accel)
+```
+
+---
+
+### 10.4 Isaac Sim: `initialize failed: 'NoneType'...`
+
+**Triệu chứng** (Script Editor):
+```
+initialize failed: 'NoneType' object has no attribute 'create_articulation_view'
+```
+
+**Nguyên nhân:** `SingleArticulation.initialize()` được gọi khi timeline chưa
+playing — physics fabric chưa khởi tạo.
+
+**Fix:** Gọi `timeline.play()` và await vài frame trước khi `initialize()`:
+```python
+tl.play()
+for _ in range(10):
+    await app.next_update_async()
+robot.initialize()
+```
+
+---
+
+### 10.5 Robot "nhảy loạn" khi dùng `set_joint_positions()`
+
+**Triệu chứng:** Joint positions ra giá trị phi thực tế như `-106253°`, `2272222°`.
+
+**Nguyên nhân:** `set_joint_positions()` teleport joint ngay lập tức trong khi
+physics đang chạy với drive yếu (`stiffness=41.25`, `maxForce=56 Nm`).
+Physics thấy vận tốc vô hạn → explosion.
+
+**Fix:** Dùng `drive:angular:physics:targetPosition` (đơn vị độ) thay vì
+teleport — drive PD controller kéo joint về đích mượt mà:
+```python
+prim.GetAttribute("drive:angular:physics:targetPosition").Set(math.degrees(q[i]))
+```
+Đồng thời set stiffness cao **trước** khi `timeline.play()` (PhysX đọc USD
+tại thời điểm khởi tạo, không đọc lại sau khi đang chạy):
+```python
+prim.GetAttribute("drive:angular:physics:stiffness").Set(1e8)
+prim.GetAttribute("drive:angular:physics:maxForce").Set(1e10)
+# ... rồi mới:
+tl.play()
+```
+
+---
+
+### 10.6 Isaac Sim: chạy headless `python.sh` không thấy trong GUI
+
+**Triệu chứng:** Chạy `./python.sh sync_ursim_isaac.py` nhưng không thấy gì
+trong viewport đang mở.
+
+**Nguyên nhân:** `python.sh` tạo **instance Isaac Sim mới hoàn toàn** (headless,
+riêng biệt). Không kết nối vào instance GUI đang chạy.
+
+**Fix:** Dùng **Script Editor** trong GUI (`Window → Script Editor`) để chạy
+code trong context của instance đang mở. Dùng `isaac_gui_sync.py`.
+
+---
+
+### 10.7 `asyncio.ensure_future()` trong Script Editor không có output
+
+**Triệu chứng:** Script Editor chỉ in `<coroutine object ...>` hoặc không
+thấy output của `print()`.
+
+**Nguyên nhân:** `ensure_future()` trả về object ngay lập tức, async task
+chạy ở background. Output `print()` đổ vào stdout của Isaac Sim process,
+không phải Script Editor console.
+
+**Fix:** Xem output trong terminal khởi động Isaac Sim, hoặc dùng
+`carb.log_warn()` thay cho `print()` để thấy trong Isaac Sim console.
+
+---
+
+### 10.8 `NameError` trong `control_ur3e.py` — SPEED/ACCEL
+
+**Triệu chứng:**
+```
+NameError: name 'SPEED' is not defined
+```
+
+**Nguyên nhân:** Hàm `movej()` dùng `SPEED`/`ACCEL` làm default argument
+nhưng constants được định nghĩa sau hàm.
+
+**Fix:** Định nghĩa `HOME`, `PICK`, `PLACE`, `SPEED`, `ACCEL` **trước** hàm `movej()`.
+
+---
+
+### 10.9 PolyScope không vẽ được UI (Java AWT)
+
+**Triệu chứng:** felix.jar khởi động nhưng không hiện cửa sổ, log có lỗi
+liên quan đến display/AWT.
+
+**Nguyên nhân:** Java cần `DISPLAY` và `XAUTHORITY` đúng.
+
+**Fix:**
+```bash
+export DISPLAY=:10.0
+export XAUTHORITY=/root/.Xauthority
+```
+Không set `LD_LIBRARY_PATH` cho Java (gây segfault vì Java 64-bit load nhầm
+lib 32-bit của URControl).
+
+---
+
+### 10.10 USD prim path sai — ArticulationRoot không tìm thấy
+
+**Triệu chứng:** `SingleArticulation` không khởi tạo được, hoặc DOF = 0.
+
+**Nguyên nhân:** `ur3e.usd` load dưới dạng **payload** vào `ur3e_01`. Root prim
+`ur3e` trong file asset **merge** với prim `ur3e_01` → `ArticulationRoot`
+(`root_joint`) nằm tại `ur3e_01/root_joint`, không phải `ur3e_01/ur3e/root_joint`.
+
+**Đúng:**
+```
+/World/servo_indexed_belt_conveyor/Arm_Robot_02/ur3e_01/root_joint
+```
+**Sai:**
+```
+/World/servo_indexed_belt_conveyor/Arm_Robot_02/ur3e_01/ur3e/root_joint
+```
